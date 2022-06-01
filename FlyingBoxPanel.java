@@ -15,6 +15,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
+import java.util.Random;
 
 
 /**
@@ -39,13 +40,31 @@ public class FlyingBoxPanel extends JPanel {
     };
 
     private double thrusterAccel = 0.0;
-    private double thrusterMaxAccel = 18.0;  // m/s^2
+    private double thrusterMaxAccel = 15.0;  // m/s^2
     private int setpoint = height/4;  // pixels
-    private double relError;
+    private int[] target = {width/2, setpoint};
 
     private BufferedImage thrusterJet;
     private int thrusterJetWidth;
     private int thrusterJetHeight;
+    private Random rand = new Random();
+
+    private enum ControllerType {
+        P,
+        PI,
+        PD,
+        PID
+    }
+    private double proportionalGain = thrusterMaxAccel * 2;
+    private double integralGain = 0.5;
+    private double derivativeGain = 300;
+    private double relError = 0;
+    private double relErrorPrev = 0;
+    private double relErrorSum = 0;
+    private double relErrorSumMax = thrusterMaxAccel * 1.5;
+    private double relErrorSumMin = -thrusterMaxAccel / 2;
+    private boolean firstStep = true;
+    private ControllerType controller = ControllerType.PID;
 
     public FlyingBoxPanel() {
         readThrusterJetImage();
@@ -81,17 +100,61 @@ public class FlyingBoxPanel extends JPanel {
 
         boxVelocity[0] += boxAccel[0] * timestep;
         boxVelocity[1] += boxAccel[1] * timestep;
-        if (boxCenter[1] > setpoint) {  // if box below setpoint, fire thruster proportionally to error
-            double error = boxCenter[1] - setpoint;
-            relError = error/(height/2);
-            thrusterAccel = thrusterMaxAccel * relError;
-            thrusterAccel = Math.min(thrusterAccel, thrusterMaxAccel);
-            boxVelocity[1] += thrusterAccel * timestep;
-        } else relError = -1;
+        
+        double error = boxCenter[1] - setpoint;
+        relError = error/(height/2);
+
+        if (firstStep) {
+            relErrorPrev = relError;
+            firstStep = false;
+        }
+        double proportionalTerm = 0;
+        double integralTerm = 0;
+        double derivativeTerm = 0;
+        double relErrorDelta = 0;
+        switch (controller) {
+            case P: // proportional control
+                proportionalTerm = relError * proportionalGain;
+                thrusterAccel = proportionalTerm;
+                break;
+            
+            case PI:  // proportional-integral control
+                proportionalTerm = relError * proportionalGain;
+                relErrorSum += relError;
+                // clamp the integral sum to prevent excessive wind-up
+                relErrorSum = Math.max(relErrorSumMin, Math.min(relErrorSumMax, relErrorSum));
+                integralTerm = relErrorSum * integralGain;
+                thrusterAccel = proportionalTerm + integralTerm;
+                break;
+            
+            case PD:  // proportional-derivative control
+                proportionalTerm = relError * proportionalGain;
+                relErrorDelta = (relError - relErrorPrev) / timestep;
+                derivativeTerm = relErrorDelta * derivativeGain;
+                thrusterAccel = proportionalTerm + derivativeTerm;
+                relErrorPrev = relError;
+                break;
+
+            case PID:  // proportional-integral-derivative
+                proportionalTerm = relError * proportionalGain;
+                relErrorSum += relError;
+                // clamp the integral sum to prevent excessive wind-up
+                relErrorSum = Math.max(relErrorSumMin, Math.min(relErrorSumMax, relErrorSum));
+                integralTerm = relErrorSum * integralGain;
+                relErrorDelta = (relError - relErrorPrev) / timestep;
+                derivativeTerm = relErrorDelta * derivativeGain;
+                thrusterAccel = proportionalTerm + integralTerm + derivativeTerm;
+                relErrorPrev = relError;
+                break;
+        }
+        thrusterAccel = Math.min(thrusterAccel, thrusterMaxAccel);
+        thrusterAccel = Math.max(thrusterAccel, 0);
+        boxVelocity[1] += thrusterAccel * timestep;
+        
 
         repaint();
         try {
-            TimeUnit.MILLISECONDS.sleep(3);
+            TimeUnit.MILLISECONDS.sleep(1);
         } catch (Exception e) {
             System.out.println(e);
             System.exit(1);
@@ -105,24 +168,20 @@ public class FlyingBoxPanel extends JPanel {
     @Override
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
+        // draw the target
+        g.setColor(Color.WHITE);
+        g.drawLine(target[0]+boxSideLength/2, target[1]+boxSideLength/2, target[0]+boxSideLength, target[1]+boxSideLength/2);
 
-        // do the below if you care about resizing
-        // width = getWidth();
-        // height = getHeight();
-
-        // boxSideLength = Math.min(width/2, height/2);
-        // do the above if you care about resizing
-
-        // just draw dat boi
+        // draw dat boi
         g.setColor(Color.RED);
         for (int i=0; i<boxVertices.length; i++) {
             g.drawLine((int)boxVertices[i][0], (int)boxVertices[i][1], (int)boxVertices[(i+1)%boxVertices.length][0], (int)boxVertices[(i+1)%boxVertices.length][1]);
         }
 
-        // just draw dat boi's thruster (if it's on)
-        if (relError > 0) {
-            int newWidth = (int)(thrusterJetWidth * relError);
-            int newHeight = (int)(thrusterJetHeight * relError);
+        // draw dat boi's thruster (if it's on)
+        if (thrusterAccel > 0) {
+            int newWidth = (int)(thrusterJetWidth * thrusterAccel/thrusterMaxAccel) + (rand.nextInt(3+1) - 1);
+            int newHeight = (int)(thrusterJetHeight * thrusterAccel/thrusterMaxAccel) + (rand.nextInt(3+1) - 1);
             if (newWidth > 0 && newHeight > 0) {
                 Image thrusterJetScaled = thrusterJet.getScaledInstance(newWidth, newHeight, Image.SCALE_FAST);
                 g.drawImage(thrusterJetScaled, (int)(boxCenter[0] - newWidth/2 + 1), (int)(boxCenter[1] + boxSideLength/2), this);
