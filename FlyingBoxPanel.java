@@ -133,7 +133,7 @@ public class FlyingBoxPanel extends JPanel {
         thrusterJetAnchor.y = boxCenter[1] + boxSideLength/2;
         Graphics2D g2d = (Graphics2D) g;
         g2d.setPaint(thrusterJetPaint);
-        g2d.draw(thrusterJetAnchor);
+        g2d.fill(thrusterJetAnchor);
     }
 
     public static void main(String[] args) {
