@@ -1,12 +1,6 @@
 /** 
  * @author matt elmer
 */
-
-/**
- * NOTES:
- * - currently this is just a falling box.
- */
-
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics;
