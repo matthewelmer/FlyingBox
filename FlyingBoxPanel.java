@@ -4,9 +4,19 @@
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
+
 import javax.swing.JFrame;
 import javax.swing.JPanel;
+
 import java.util.concurrent.TimeUnit;
+
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import javax.imageio.ImageIO;
+import java.awt.TexturePaint;
+import java.awt.geom.Rectangle2D;
 
 
 /**
@@ -24,14 +34,42 @@ public class FlyingBoxPanel extends JPanel {
     private double[] boxVelocity = {0.0, 0.0};
     private double[] boxAccel = {0.0, -gravity};
     private double[][] boxVertices = {
-        {(int)boxCenter[0]-boxSideLength/2, (int)boxCenter[1]-boxSideLength/2},
-        {(int)boxCenter[0]+boxSideLength/2, (int)boxCenter[1]-boxSideLength/2},
-        {(int)boxCenter[0]+boxSideLength/2, (int)boxCenter[1]+boxSideLength/2},
-        {(int)boxCenter[0]-boxSideLength/2, (int)boxCenter[1]+boxSideLength/2}
+        {(int)boxCenter[0]-boxSideLength/2, (int)boxCenter[1]-boxSideLength/2},  // top left
+        {(int)boxCenter[0]+boxSideLength/2, (int)boxCenter[1]-boxSideLength/2},  // top right
+        {(int)boxCenter[0]+boxSideLength/2, (int)boxCenter[1]+boxSideLength/2},  // bottom right
+        {(int)boxCenter[0]-boxSideLength/2, (int)boxCenter[1]+boxSideLength/2}   // bottom left
     };
 
+    private double thrusterAccel;
     private double thrusterMaxAccel = 18.0;  // m/s^2
     private int setpoint = height/4;  // pixels
+
+    private BufferedImage thrusterJet;
+    private int thrusterJetWidth;
+    private int thrusterJetHeight;
+    private Rectangle2D.Double thrusterJetAnchor;
+    private TexturePaint thrusterJetPaint;
+
+    public FlyingBoxPanel() {
+        readThrusterJetImage();
+        initThrusterJetPaint();
+    }
+
+    public void readThrusterJetImage() {
+        try {
+            thrusterJet = ImageIO.read(new File("thruster_flame_cropped_40px.png"));
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            System.exit(1);
+        }
+        thrusterJetWidth = thrusterJet.getWidth();
+        thrusterJetHeight = thrusterJet.getHeight();
+    }
+
+    public void initThrusterJetPaint() {
+        thrusterJetAnchor = new Rectangle2D.Double(boxCenter[0]-thrusterJetWidth, boxCenter[1]+boxSideLength/2, thrusterJetWidth, thrusterJetHeight);
+        thrusterJetPaint = new TexturePaint(thrusterJet, thrusterJetAnchor);
+    }
 
     private void updateVertices() {
         boxVertices[0][0] = boxCenter[0] - boxSideLength/2;
@@ -45,6 +83,7 @@ public class FlyingBoxPanel extends JPanel {
     }
 
     public void takeStep() {
+        // do box stuff
         boxCenter[0] += boxVelocity[0] * timestep;
         boxCenter[1] -= boxVelocity[1] * timestep;
         updateVertices();
@@ -54,7 +93,7 @@ public class FlyingBoxPanel extends JPanel {
         if (boxCenter[1] > setpoint) {  // if box below setpoint, fire thruster proportionally to error
             double error = boxCenter[1] - setpoint;
             double relError = error/(height/2);
-            double thrusterAccel = thrusterMaxAccel * relError;
+            thrusterAccel = thrusterMaxAccel * relError;
             thrusterAccel = Math.min(thrusterAccel, thrusterMaxAccel);
             boxVelocity[1] += thrusterAccel * timestep;
         }
@@ -88,18 +127,25 @@ public class FlyingBoxPanel extends JPanel {
         for (int i=0; i<boxVertices.length; i++) {
             g.drawLine((int)boxVertices[i][0], (int)boxVertices[i][1], (int)boxVertices[(i+1)%boxVertices.length][0], (int)boxVertices[(i+1)%boxVertices.length][1]);
         }
+
+        // just paint dat boi's thruster
+        thrusterJetAnchor.x = boxCenter[0] - thrusterJetWidth/2;
+        thrusterJetAnchor.y = boxCenter[1] + boxSideLength/2;
+        Graphics2D g2d = (Graphics2D) g;
+        g2d.setPaint(thrusterJetPaint);
+        g2d.draw(thrusterJetAnchor);
     }
 
     public static void main(String[] args) {
-        FlyingBoxPanel panel = new FlyingBoxPanel();
-        panel.setBackground(Color.BLACK);
+        FlyingBoxPanel fbPanel = new FlyingBoxPanel();
+        fbPanel.setBackground(Color.BLACK);
         JFrame frame = new JFrame("Flying Box");
-        frame.setSize(panel.width, panel.height);
+        frame.setSize(fbPanel.width, fbPanel.height);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.getContentPane().add(panel, BorderLayout.CENTER);
+        frame.getContentPane().add(fbPanel, BorderLayout.CENTER);
         frame.setVisible(true);
         while (true) {
-            panel.takeStep();
+            fbPanel.takeStep();
             frame.getToolkit().sync();
         }
     }
