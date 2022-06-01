@@ -4,7 +4,7 @@
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
+import java.awt.Image;
 
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -15,8 +15,6 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
-import java.awt.TexturePaint;
-import java.awt.geom.Rectangle2D;
 
 
 /**
@@ -30,7 +28,7 @@ public class FlyingBoxPanel extends JPanel {
     private int height = 720;  // pixels
 
     private int boxSideLength = 50;
-    private double[] boxCenter = {width/2, height/4};
+    private double[] boxCenter = {width/2, height/5};
     private double[] boxVelocity = {0.0, 0.0};
     private double[] boxAccel = {0.0, -gravity};
     private double[][] boxVertices = {
@@ -40,19 +38,17 @@ public class FlyingBoxPanel extends JPanel {
         {(int)boxCenter[0]-boxSideLength/2, (int)boxCenter[1]+boxSideLength/2}   // bottom left
     };
 
-    private double thrusterAccel;
+    private double thrusterAccel = 0.0;
     private double thrusterMaxAccel = 18.0;  // m/s^2
     private int setpoint = height/4;  // pixels
+    private double relError;
 
     private BufferedImage thrusterJet;
     private int thrusterJetWidth;
     private int thrusterJetHeight;
-    private Rectangle2D.Double thrusterJetAnchor;
-    private TexturePaint thrusterJetPaint;
 
     public FlyingBoxPanel() {
         readThrusterJetImage();
-        initThrusterJetPaint();
     }
 
     public void readThrusterJetImage() {
@@ -64,11 +60,6 @@ public class FlyingBoxPanel extends JPanel {
         }
         thrusterJetWidth = thrusterJet.getWidth();
         thrusterJetHeight = thrusterJet.getHeight();
-    }
-
-    public void initThrusterJetPaint() {
-        thrusterJetAnchor = new Rectangle2D.Double(boxCenter[0]-thrusterJetWidth, boxCenter[1]+boxSideLength/2, thrusterJetWidth, thrusterJetHeight);
-        thrusterJetPaint = new TexturePaint(thrusterJet, thrusterJetAnchor);
     }
 
     private void updateVertices() {
@@ -92,11 +83,11 @@ public class FlyingBoxPanel extends JPanel {
         boxVelocity[1] += boxAccel[1] * timestep;
         if (boxCenter[1] > setpoint) {  // if box below setpoint, fire thruster proportionally to error
             double error = boxCenter[1] - setpoint;
-            double relError = error/(height/2);
+            relError = error/(height/2);
             thrusterAccel = thrusterMaxAccel * relError;
             thrusterAccel = Math.min(thrusterAccel, thrusterMaxAccel);
             boxVelocity[1] += thrusterAccel * timestep;
-        }
+        } else relError = -1;
 
         repaint();
         try {
@@ -122,18 +113,21 @@ public class FlyingBoxPanel extends JPanel {
         // boxSideLength = Math.min(width/2, height/2);
         // do the above if you care about resizing
 
-        // just paint dat boi
+        // just draw dat boi
         g.setColor(Color.RED);
         for (int i=0; i<boxVertices.length; i++) {
             g.drawLine((int)boxVertices[i][0], (int)boxVertices[i][1], (int)boxVertices[(i+1)%boxVertices.length][0], (int)boxVertices[(i+1)%boxVertices.length][1]);
         }
 
-        // just paint dat boi's thruster
-        thrusterJetAnchor.x = boxCenter[0] - thrusterJetWidth/2;
-        thrusterJetAnchor.y = boxCenter[1] + boxSideLength/2;
-        Graphics2D g2d = (Graphics2D) g;
-        g2d.setPaint(thrusterJetPaint);
-        g2d.fill(thrusterJetAnchor);
+        // just draw dat boi's thruster (if it's on)
+        if (relError > 0) {
+            int newWidth = (int)(thrusterJetWidth * relError);
+            int newHeight = (int)(thrusterJetHeight * relError);
+            if (newWidth > 0 && newHeight > 0) {
+                Image thrusterJetScaled = thrusterJet.getScaledInstance(newWidth, newHeight, Image.SCALE_FAST);
+                g.drawImage(thrusterJetScaled, (int)(boxCenter[0] - newWidth/2 + 1), (int)(boxCenter[1] + boxSideLength/2), this);
+            }
+        }
     }
 
     public static void main(String[] args) {
