@@ -19,14 +19,14 @@ import java.util.concurrent.TimeUnit;
  * A panel that draws a flying box.
  */
 public class FlyingBoxPanel extends JPanel {
-    double gravity = 9.81;  // m/s^2
-    double timestep = 0.01;  // seconds
+    private double gravity = 9.81;  // m/s^2
+    private double timestep = 0.03;  // seconds
 
     private int width = 1280;  // pixels
     private int height = 720;  // pixels
 
     private int boxSideLength = 50;
-    private double[] boxCenter = {width/2, height/2};
+    private double[] boxCenter = {width/2, height/4};
     private double[] boxVelocity = {0.0, 0.0};
     private double[] boxAccel = {0.0, -gravity};
     private double[][] boxVertices = {
@@ -35,6 +35,9 @@ public class FlyingBoxPanel extends JPanel {
         {(int)boxCenter[0]+boxSideLength/2, (int)boxCenter[1]+boxSideLength/2},
         {(int)boxCenter[0]-boxSideLength/2, (int)boxCenter[1]+boxSideLength/2}
     };
+
+    private double thrusterMaxAccel = 18.0;  // m/s^2
+    private int setpoint = height/4;  // pixels
 
     private void updateVertices() {
         boxVertices[0][0] = boxCenter[0] - boxSideLength/2;
@@ -54,10 +57,17 @@ public class FlyingBoxPanel extends JPanel {
 
         boxVelocity[0] += boxAccel[0] * timestep;
         boxVelocity[1] += boxAccel[1] * timestep;
+        if (boxCenter[1] > setpoint) {  // if box below setpoint, fire thruster proportionally to error
+            double error = boxCenter[1] - setpoint;
+            double relError = error/(height/2);
+            double thrusterAccel = thrusterMaxAccel * relError;
+            thrusterAccel = Math.min(thrusterAccel, thrusterMaxAccel);
+            boxVelocity[1] += thrusterAccel * timestep;
+        }
 
         repaint();
         try {
-            TimeUnit.MILLISECONDS.sleep(1);
+            TimeUnit.MILLISECONDS.sleep(3);
         } catch (Exception e) {
             System.out.println(e);
             System.exit(1);
@@ -96,6 +106,7 @@ public class FlyingBoxPanel extends JPanel {
         frame.setVisible(true);
         while (true) {
             panel.takeStep();
+            frame.getToolkit().sync();
         }
     }
 }
